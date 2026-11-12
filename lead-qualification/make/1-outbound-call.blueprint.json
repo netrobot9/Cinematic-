@@ -1,0 +1,69 @@
+{
+  "name": "1 - Lead Intake & Outbound AI Call",
+  "flow": [
+    {
+      "id": 1,
+      "module": "airtable:TriggerWatchRecords",
+      "version": 1,
+      "parameters": {
+        "__IMTCONN__": 14575071,
+        "base": "REPLACE_AIRTABLE_BASE_ID",
+        "table": "REPLACE_AIRTABLE_LEADS_TABLE_ID",
+        "limit": 1
+      },
+      "mapper": {},
+      "metadata": { "designer": { "x": 0, "y": 0 } }
+    },
+    {
+      "id": 2,
+      "module": "http:ActionSendData",
+      "version": 3,
+      "parameters": {},
+      "mapper": {
+        "url": "https://api.vapi.ai/call",
+        "method": "post",
+        "headers": [
+          { "name": "Authorization", "value": "Bearer REPLACE_VAPI_API_KEY" },
+          { "name": "Content-Type", "value": "application/json" }
+        ],
+        "data": "{\"assistantId\":\"REPLACE_VAPI_ASSISTANT_ID\",\"phoneNumberId\":\"REPLACE_VAPI_PHONE_NUMBER_ID\",\"customer\":{\"number\":\"{{1.Phone}}\",\"name\":\"{{1.Name}}\"},\"assistantOverrides\":{\"variableValues\":{\"leadName\":\"{{1.Name}}\",\"company\":\"{{1.Company}}\"}}}",
+        "parseResponse": true
+      },
+      "metadata": { "designer": { "x": 300, "y": 0 } }
+    },
+    {
+      "id": 3,
+      "module": "airtable:ActionUpdateRecords",
+      "version": 1,
+      "parameters": {
+        "__IMTCONN__": 14575071,
+        "base": "REPLACE_AIRTABLE_BASE_ID",
+        "table": "REPLACE_AIRTABLE_LEADS_TABLE_ID",
+        "typecast": false,
+        "useColumnId": false
+      },
+      "mapper": {
+        "id": "{{1.id}}",
+        "Status": "Calling",
+        "Vapi Call ID": "{{2.data.id}}",
+        "Last Called": "{{now}}"
+      },
+      "metadata": { "designer": { "x": 600, "y": 0 } }
+    }
+  ],
+  "metadata": {
+    "version": 1,
+    "scenario": {
+      "roundtrips": 1,
+      "maxErrors": 3,
+      "autoCommit": true,
+      "autoCommitTriggerLast": true,
+      "sequential": false,
+      "confidential": false,
+      "dataloss": false,
+      "dlq": true,
+      "freshVariables": false
+    },
+    "designer": { "orphans": [] }
+  }
+}

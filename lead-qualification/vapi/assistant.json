@@ -1,0 +1,93 @@
+{
+  "name": "Lead Qualifier & Scheduler",
+  "firstMessage": "Hi, may I speak with {{leadName}}? This is Alex calling about your recent inquiry. Do you have a quick minute?",
+  "firstMessageMode": "assistant-speaks-first",
+  "voice": {
+    "provider": "vapi",
+    "voiceId": "Elliot"
+  },
+  "transcriber": {
+    "provider": "deepgram",
+    "model": "nova-2",
+    "language": "en"
+  },
+  "model": {
+    "provider": "anthropic",
+    "model": "claude-sonnet-5-5",
+    "temperature": 0.3,
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are Alex, a friendly sales assistant calling on behalf of our company. Today is {{now}}. You are calling {{leadName}} from {{company}}.\n\nGOALS, in order:\n1. Confirm you are speaking with the right person. If not, ask for the right person or whether a better time exists, then end politely.\n2. Ask these qualifying questions, one at a time, and listen:\n   a. What made you look into our service, and what problem are you hoping to solve?\n   b. Are you the person who makes or heavily influences this decision?\n   c. Are you hoping to get started within the next 3 months?\n3. If the lead is a good fit (has a real need, is the decision maker or influencer, and has a timeline within 3 months), offer a 30-minute discovery call and ask for a day and time.\n4. When they give a day and time, confirm it back in plain words with the time zone, then call the book_appointment tool with start_time as an ISO 8601 string including the offset (for example 2026-11-18T14:00:00-05:00). Only say the appointment is booked after the tool returns success.\n5. Before ending, summarize the outcome in one sentence.\n\nRULES:\n- Keep every turn to two sentences or fewer. Sound human, never read a script.\n- If they are not interested, thank them and end the call. Do not argue.\n- If they ask for a callback, note the preferred time and end the call.\n- If they say they are a voicemail or the number is wrong, end the call.\n- If they ask whether you are an AI, say yes, you are an AI assistant calling on behalf of the company.\n- If they ask to be removed from calls, confirm you will do so and end the call.\n- Never invent prices, guarantees or availability. If unsure, say a team member will follow up.\n- Use the end call tool when the conversation is finished."
+      }
+    ],
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "book_appointment",
+          "description": "Books a 30-minute discovery call on the team calendar for the lead on this call. Call only after the lead has agreed to a specific day and time.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "start_time": {
+                "type": "string",
+                "description": "Appointment start in ISO 8601 with time zone offset, e.g. 2026-11-18T14:00:00-05:00"
+              },
+              "timezone": {
+                "type": "string",
+                "description": "IANA time zone the lead named, e.g. America/New_York"
+              },
+              "name": {
+                "type": "string",
+                "description": "Name of the person booking"
+              }
+            },
+            "required": ["start_time", "timezone"]
+          }
+        },
+        "server": {
+          "url": "https://REPLACE_N8N_BASE_URL/webhook/book-appointment"
+        },
+        "messages": [
+          {
+            "type": "request-start",
+            "content": "One moment while I book that for you."
+          },
+          {
+            "type": "request-failed",
+            "content": "I could not book that just now. A team member will follow up with you shortly."
+          }
+        ]
+      }
+    ]
+  },
+  "endCallFunctionEnabled": true,
+  "endCallMessage": "Thanks for your time. Have a great day!",
+  "maxDurationSeconds": 600,
+  "silenceTimeoutSeconds": 20,
+  "backgroundDenoisingEnabled": true,
+  "server": {
+    "url": "https://REPLACE_N8N_BASE_URL/webhook/vapi-events"
+  },
+  "serverMessages": ["end-of-call-report"],
+  "analysisPlan": {
+    "summaryPrompt": "Summarize the call in 2-3 sentences: the lead's need, their timeline, whether they are the decision maker, and the result (booked, interested, not interested, callback requested, or no answer).",
+    "structuredDataPrompt": "Extract the call outcome. Use 'interested' only if the lead wants to continue and gave a reasonable fit signal. Use 'not_interested' if they declined. Use 'callback' if they asked to be called later. Use 'no_answer' for voicemail, wrong number, or no real conversation. Put the agreed appointment start as an ISO 8601 string in appointment_time, or null if none was booked.",
+    "structuredDataSchema": {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "enum": ["interested", "not_interested", "callback", "no_answer"],
+          "description": "Final result of the call"
+        },
+        "appointment_time": {
+          "type": ["string", "null"],
+          "description": "Booked appointment start in ISO 8601, or null"
+        }
+      },
+      "required": ["outcome"]
+    }
+  }
+}

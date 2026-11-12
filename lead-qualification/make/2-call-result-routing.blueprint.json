@@ -1,0 +1,181 @@
+{
+  "name": "2 - Vapi End-of-Call Routing",
+  "flow": [
+    {
+      "id": 1,
+      "module": "gateway:CustomWebHook",
+      "version": 1,
+      "parameters": {
+        "hook": 4510532,
+        "maxResults": 1
+      },
+      "mapper": {},
+      "metadata": { "designer": { "x": 0, "y": 0 } }
+    },
+    {
+      "id": 2,
+      "module": "airtable:ActionSearchRecords",
+      "version": 1,
+      "parameters": {
+        "__IMTCONN__": 14575071,
+        "base": "REPLACE_AIRTABLE_BASE_ID",
+        "table": "REPLACE_AIRTABLE_LEADS_TABLE_ID",
+        "formulaField": "formula",
+        "maxRecords": 1,
+        "useColumnId": false
+      },
+      "mapper": {
+        "formula": "{Vapi Call ID} = '{{1.body.message.call.id}}'"
+      },
+      "filter": {
+        "name": "End-of-call report only",
+        "conditions": [
+          [
+            { "a": "{{1.body.message.type}}", "b": "end-of-call-report", "o": "text:equal" }
+          ]
+        ]
+      },
+      "metadata": { "designer": { "x": 300, "y": 0 } }
+    },
+    {
+      "id": 3,
+      "module": "builtin:BasicRouter",
+      "version": 1,
+      "parameters": {},
+      "mapper": null,
+      "metadata": { "designer": { "x": 600, "y": 0 } },
+      "routes": [
+        {
+          "flow": [
+            {
+              "id": 4,
+              "module": "airtable:ActionUpdateRecords",
+              "version": 1,
+              "filter": {
+                "name": "Interested",
+                "conditions": [
+                  [ { "a": "{{1.body.message.analysis.structuredData.outcome}}", "b": "interested", "o": "text:equal" } ]
+                ]
+              },
+              "parameters": {
+                "__IMTCONN__": 14575071,
+                "base": "REPLACE_AIRTABLE_BASE_ID",
+                "table": "REPLACE_AIRTABLE_LEADS_TABLE_ID",
+                "typecast": false,
+                "useColumnId": false
+              },
+              "mapper": {
+                "id": "{{2.id}}",
+                "Status": "Interested",
+                "Call Summary": "{{1.body.message.analysis.summary}}"
+              },
+              "metadata": { "designer": { "x": 900, "y": -200 } }
+            },
+            {
+              "id": 5,
+              "module": "google-email:ActionSendEmail",
+              "version": 1,
+              "parameters": {
+                "account": 9648207
+              },
+              "mapper": {
+                "to": ["{{2.Email}}"],
+                "subject": "Next steps from our call",
+                "html": "Hi there,<br><br>Thanks for speaking with us today.<br><br>{{if(1.body.message.analysis.structuredData.appointment_time; \"Your discovery call is confirmed for \" & 1.body.message.analysis.structuredData.appointment_time & \".\"; \"Reply to this email and we will find a time that works for you.\")}}<br><br>Speak soon."
+              },
+              "metadata": { "designer": { "x": 1200, "y": -200 } }
+            },
+            {
+              "id": 6,
+              "module": "slack:ActionCreateMessage",
+              "version": 2,
+              "parameters": {
+                "account": "REPLACE_SLACK_CONNECTION_ID",
+                "type": "channel",
+                "channelId": "REPLACE_SLACK_CHANNEL_ID"
+              },
+              "mapper": {
+                "text": ":white_check_mark: Interested lead: {{2.Name}}\nAppointment: {{if(1.body.message.analysis.structuredData.appointment_time; 1.body.message.analysis.structuredData.appointment_time; \"not booked yet\")}}\nSummary: {{1.body.message.analysis.summary}}"
+              },
+              "metadata": { "designer": { "x": 1500, "y": -200 } }
+            }
+          ]
+        },
+        {
+          "flow": [
+            {
+              "id": 7,
+              "module": "airtable:ActionUpdateRecords",
+              "version": 1,
+              "filter": {
+                "name": "Not Interested",
+                "conditions": [
+                  [ { "a": "{{1.body.message.analysis.structuredData.outcome}}", "b": "not_interested", "o": "text:equal" } ]
+                ]
+              },
+              "parameters": {
+                "__IMTCONN__": 14575071,
+                "base": "REPLACE_AIRTABLE_BASE_ID",
+                "table": "REPLACE_AIRTABLE_LEADS_TABLE_ID",
+                "typecast": false,
+                "useColumnId": false
+              },
+              "mapper": {
+                "id": "{{2.id}}",
+                "Status": "Not Interested",
+                "Call Summary": "{{1.body.message.analysis.summary}}"
+              },
+              "metadata": { "designer": { "x": 900, "y": 100 } }
+            }
+          ]
+        },
+        {
+          "flow": [
+            {
+              "id": 8,
+              "module": "airtable:ActionUpdateRecords",
+              "version": 1,
+              "filter": {
+                "name": "Callback or no answer",
+                "conditions": [
+                  [
+                    { "a": "{{1.body.message.analysis.structuredData.outcome}}", "b": "interested", "o": "text:notequal" },
+                    { "a": "{{1.body.message.analysis.structuredData.outcome}}", "b": "not_interested", "o": "text:notequal" }
+                  ]
+                ]
+              },
+              "parameters": {
+                "__IMTCONN__": 14575071,
+                "base": "REPLACE_AIRTABLE_BASE_ID",
+                "table": "REPLACE_AIRTABLE_LEADS_TABLE_ID",
+                "typecast": false,
+                "useColumnId": false
+              },
+              "mapper": {
+                "id": "{{2.id}}",
+                "Status": "{{if(1.body.message.analysis.structuredData.outcome = \"callback\"; \"Callback\"; \"No Answer\")}}",
+                "Call Summary": "{{1.body.message.analysis.summary}}"
+              },
+              "metadata": { "designer": { "x": 900, "y": 400 } }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "version": 1,
+    "scenario": {
+      "roundtrips": 1,
+      "maxErrors": 3,
+      "autoCommit": true,
+      "autoCommitTriggerLast": true,
+      "sequential": false,
+      "confidential": false,
+      "dataloss": false,
+      "dlq": true,
+      "freshVariables": false
+    },
+    "designer": { "orphans": [] }
+  }
+}

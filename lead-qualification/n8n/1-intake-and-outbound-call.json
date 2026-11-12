@@ -1,0 +1,161 @@
+{
+  "name": "1 - Lead Intake & Outbound AI Call",
+  "nodes": [
+    {
+      "parameters": {
+        "baseId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_AIRTABLE_BASE_ID"
+        },
+        "tableId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_AIRTABLE_LEADS_TABLE_ID"
+        },
+        "event": "create",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0001-4000-8000-000000000001",
+      "name": "Airtable Trigger (Watch New Leads)",
+      "type": "n8n-nodes-base.airtableTrigger",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "credentials": {
+        "airtableTokenApi": {
+          "name": "Airtable account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c0000001-0000-4000-8000-000000000001",
+              "leftValue": "={{ $json.fields?.Phone ?? $json.Phone }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0002-4000-8000-000000000002",
+      "name": "Has Phone Number?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.vapi.ai/call",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ assistantId: \"REPLACE_VAPI_ASSISTANT_ID\", phoneNumberId: \"REPLACE_VAPI_PHONE_NUMBER_ID\", customer: { number: $json.fields?.Phone ?? $json.Phone, name: $json.fields?.Name ?? $json.Name ?? \"\" }, assistantOverrides: { variableValues: { leadName: $json.fields?.Name ?? $json.Name ?? \"there\", company: $json.fields?.Company ?? $json.Company ?? \"\" } } }) }}",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0003-4000-8000-000000000003",
+      "name": "Vapi: Create Outbound Call",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 220],
+      "credentials": {
+        "httpBearerAuth": {
+          "name": "Vapi API key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_AIRTABLE_BASE_ID"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_AIRTABLE_LEADS_TABLE_ID"
+        },
+        "id": "={{ $('Airtable Trigger (Watch New Leads)').item.json.id }}",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "Calling",
+            "Vapi Call ID": "={{ $json.id }}",
+            "Last Called": "={{ new Date().toISOString() }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0004-4000-8000-000000000004",
+      "name": "Airtable: Mark Calling",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [900, 220],
+      "credentials": {
+        "airtableTokenApi": {
+          "name": "Airtable account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Airtable Trigger (Watch New Leads)": {
+      "main": [
+        [
+          {
+            "node": "Has Phone Number?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Phone Number?": {
+      "main": [
+        [
+          {
+            "node": "Vapi: Create Outbound Call",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Vapi: Create Outbound Call": {
+      "main": [
+        [
+          {
+            "node": "Airtable: Mark Calling",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": ["lead-qualification"]
+}
