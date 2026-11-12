@@ -1,0 +1,597 @@
+{
+  "name": "2 - Call Events, Booking & Routing",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "vapi-events",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "b1b2c3d4-0001-4000-8000-000000000001",
+      "name": "Webhook: Vapi End-of-Call",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "b1b2c3d4-1111-4000-8000-000000000001"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c0000002-0000-4000-8000-000000000001",
+              "leftValue": "={{ $json.body.message.type }}",
+              "rightValue": "end-of-call-report",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b1b2c3d4-0002-4000-8000-000000000002",
+      "name": "Is End-of-Call Report?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Text Parser (Match Pattern): turns the raw Vapi end-of-call report into a clean outcome record.\nconst body = $input.first().json.body ?? $input.first().json;\nconst msg = body.message ?? {};\nconst sd = msg.analysis?.structuredData ?? {};\nconst summary = (msg.analysis?.summary ?? msg.summary ?? '').trim();\nconst transcript = msg.transcript ?? '';\nconst haystack = `${summary}\\n${transcript}`;\n\nconst EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}/;\nconst STATUS = {\n  interested: 'Interested',\n  not_interested: 'Not Interested',\n  callback: 'Callback',\n  no_answer: 'No Answer',\n};\n\nconst outcome = STATUS[sd.outcome] ? sd.outcome : 'no_answer';\nconst emailMatch = haystack.match(EMAIL);\nconst appointmentTime = sd.appointment_time || null;\n\nconst emailBody = [\n  'Hi there,',\n  '',\n  'Thanks for speaking with us today.',\n  '',\n  appointmentTime\n    ? `Your discovery call is confirmed for ${appointmentTime}.`\n    : 'Reply to this email and we will find a time that works for you.',\n  '',\n  'Speak soon.',\n].join('\\n');\n\nreturn [{\n  json: {\n    callId: msg.call?.id ?? null,\n    outcome,\n    status: STATUS[outcome],\n    summary,\n    appointmentTime,\n    extractedEmail: emailMatch ? emailMatch[0] : null,\n    endedReason: msg.endedReason ?? null,\n    emailBody,\n  },\n}];"
+      },
+      "id": "b1b2c3d4-0003-4000-8000-000000000003",
+      "name": "Text Parser (Match Pattern)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_AIRTABLE_BASE_ID"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_AIRTABLE_LEADS_TABLE_ID"
+        },
+        "filterByFormula": "={{ \"{Vapi Call ID} = '\" + $json.callId + \"'\" }}",
+        "returnAll": false,
+        "options": {}
+      },
+      "id": "b1b2c3d4-0004-4000-8000-000000000004",
+      "name": "Find Lead by Call ID",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [900, 300],
+      "alwaysOutputData": true,
+      "credentials": {
+        "airtableTokenApi": {
+          "name": "Airtable account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Text Parser (Match Pattern)').first().json.outcome }}",
+                    "rightValue": "interested",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Interested"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Text Parser (Match Pattern)').first().json.outcome }}",
+                    "rightValue": "not_interested",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Not Interested"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "id": "b1b2c3d4-0005-4000-8000-000000000005",
+      "name": "Router: Call Outcome",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_AIRTABLE_BASE_ID"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_AIRTABLE_LEADS_TABLE_ID"
+        },
+        "id": "={{ $('Find Lead by Call ID').first().json.id }}",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "={{ $('Text Parser (Match Pattern)').first().json.status }}",
+            "Call Summary": "={{ $('Text Parser (Match Pattern)').first().json.summary }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "b1b2c3d4-0006-4000-8000-000000000006",
+      "name": "Airtable: Mark Interested",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [1360, 160],
+      "credentials": {
+        "airtableTokenApi": {
+          "name": "Airtable account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Find Lead by Call ID').first().json.Email || $('Text Parser (Match Pattern)').first().json.extractedEmail }}",
+        "subject": "Next steps from our call",
+        "message": "={{ $('Text Parser (Match Pattern)').first().json.emailBody }}",
+        "options": {}
+      },
+      "id": "b1b2c3d4-0007-4000-8000-000000000007",
+      "name": "Gmail: Send Follow-Up",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1600, 160],
+      "credentials": {
+        "gmailOAuth2": {
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "#sales-leads"
+        },
+        "text": "={{ \":white_check_mark: Interested lead: \" + ($('Find Lead by Call ID').first().json.Name ?? 'unknown') + \"\\nAppointment: \" + ($('Text Parser (Match Pattern)').first().json.appointmentTime ?? 'not booked yet') + \"\\nSummary: \" + $('Text Parser (Match Pattern)').first().json.summary }}",
+        "otherOptions": {}
+      },
+      "id": "b1b2c3d4-0008-4000-8000-000000000008",
+      "name": "Slack: Notify Sales",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1840, 160],
+      "credentials": {
+        "slackApi": {
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_AIRTABLE_BASE_ID"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_AIRTABLE_LEADS_TABLE_ID"
+        },
+        "id": "={{ $('Find Lead by Call ID').first().json.id }}",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "Not Interested",
+            "Call Summary": "={{ $('Text Parser (Match Pattern)').first().json.summary }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "b1b2c3d4-0009-4000-8000-000000000009",
+      "name": "Airtable: Mark Not Interested",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [1360, 300],
+      "credentials": {
+        "airtableTokenApi": {
+          "name": "Airtable account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_AIRTABLE_BASE_ID"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_AIRTABLE_LEADS_TABLE_ID"
+        },
+        "id": "={{ $('Find Lead by Call ID').first().json.id }}",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "={{ $('Text Parser (Match Pattern)').first().json.status }}",
+            "Call Summary": "={{ $('Text Parser (Match Pattern)').first().json.summary }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "b1b2c3d4-0010-4000-8000-000000000010",
+      "name": "Airtable: Mark Callback / No Answer",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [1360, 440],
+      "credentials": {
+        "airtableTokenApi": {
+          "name": "Airtable account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "book-appointment",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "b1b2c3d4-0011-4000-8000-000000000011",
+      "name": "Webhook: Book Appointment (Vapi Tool)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 760],
+      "webhookId": "b1b2c3d4-1111-4000-8000-000000000011"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Reads the Vapi tool-call payload and prepares a 30-minute calendar slot.\nconst body = $input.first().json.body ?? $input.first().json;\nconst msg = body.message ?? {};\nconst call = (msg.toolCallList ?? msg.toolCalls ?? [])[0];\nif (!call) throw new Error('No tool call found in payload');\n\nconst raw = call.function?.arguments ?? {};\nconst args = typeof raw === 'string' ? JSON.parse(raw) : raw;\n\nconst start = new Date(args.start_time);\nif (Number.isNaN(start.getTime())) throw new Error(`Invalid start_time: ${args.start_time}`);\nconst end = new Date(start.getTime() + 30 * 60 * 1000);\n\nreturn [{\n  json: {\n    toolCallId: call.id,\n    callId: msg.call?.id ?? null,\n    startTime: start.toISOString(),\n    endTime: end.toISOString(),\n    timezone: args.timezone ?? 'UTC',\n    name: args.name ?? '',\n  },\n}];"
+      },
+      "id": "b1b2c3d4-0012-4000-8000-000000000012",
+      "name": "Extract Tool Call",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 760]
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "mode": "id",
+          "value": "primary"
+        },
+        "start": "={{ $json.startTime }}",
+        "end": "={{ $json.endTime }}",
+        "additionalFields": {
+          "summary": "={{ 'Discovery call - ' + ($json.name || 'Lead') }}",
+          "description": "Booked automatically by the AI lead qualification agent."
+        }
+      },
+      "id": "b1b2c3d4-0013-4000-8000-000000000013",
+      "name": "Google Calendar: Create Event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [680, 760],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_AIRTABLE_BASE_ID"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_AIRTABLE_LEADS_TABLE_ID"
+        },
+        "filterByFormula": "={{ \"{Vapi Call ID} = '\" + $('Extract Tool Call').first().json.callId + \"'\" }}",
+        "returnAll": false,
+        "options": {}
+      },
+      "id": "b1b2c3d4-0014-4000-8000-000000000014",
+      "name": "Find Lead (Booking)",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [900, 760],
+      "alwaysOutputData": true,
+      "credentials": {
+        "airtableTokenApi": {
+          "name": "Airtable account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_AIRTABLE_BASE_ID"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "id",
+          "value": "REPLACE_AIRTABLE_LEADS_TABLE_ID"
+        },
+        "id": "={{ $('Find Lead (Booking)').first().json.id }}",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "Booked",
+            "Appointment Time": "={{ $('Extract Tool Call').first().json.startTime }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "b1b2c3d4-0015-4000-8000-000000000015",
+      "name": "Airtable: Mark Booked",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [1120, 760],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "airtableTokenApi": {
+          "name": "Airtable account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Formats the result Vapi reads back to the assistant so it can confirm the booking aloud.\nconst req = $('Extract Tool Call').first().json;\nconst result = `Booked. The discovery call is confirmed for ${req.startTime} (${req.timezone}).`;\nreturn [{ json: { results: [{ toolCallId: req.toolCallId, result }] } }];"
+      },
+      "id": "b1b2c3d4-0016-4000-8000-000000000016",
+      "name": "Format Tool Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 760]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "b1b2c3d4-0017-4000-8000-000000000017",
+      "name": "Respond to Vapi",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1560, 760]
+    }
+  ],
+  "connections": {
+    "Webhook: Vapi End-of-Call": {
+      "main": [
+        [
+          {
+            "node": "Is End-of-Call Report?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is End-of-Call Report?": {
+      "main": [
+        [
+          {
+            "node": "Text Parser (Match Pattern)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Text Parser (Match Pattern)": {
+      "main": [
+        [
+          {
+            "node": "Find Lead by Call ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Lead by Call ID": {
+      "main": [
+        [
+          {
+            "node": "Router: Call Outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Router: Call Outcome": {
+      "main": [
+        [
+          {
+            "node": "Airtable: Mark Interested",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Airtable: Mark Not Interested",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Airtable: Mark Callback / No Answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Airtable: Mark Interested": {
+      "main": [
+        [
+          {
+            "node": "Gmail: Send Follow-Up",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail: Send Follow-Up": {
+      "main": [
+        [
+          {
+            "node": "Slack: Notify Sales",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook: Book Appointment (Vapi Tool)": {
+      "main": [
+        [
+          {
+            "node": "Extract Tool Call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Tool Call": {
+      "main": [
+        [
+          {
+            "node": "Google Calendar: Create Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Calendar: Create Event": {
+      "main": [
+        [
+          {
+            "node": "Find Lead (Booking)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Lead (Booking)": {
+      "main": [
+        [
+          {
+            "node": "Airtable: Mark Booked",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Airtable: Mark Booked": {
+      "main": [
+        [
+          {
+            "node": "Format Tool Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Tool Result": {
+      "main": [
+        [
+          {
+            "node": "Respond to Vapi",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": ["lead-qualification"]
+}
