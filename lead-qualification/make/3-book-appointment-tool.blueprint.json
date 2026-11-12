@@ -6,7 +6,7 @@
       "module": "gateway:CustomWebHook",
       "version": 1,
       "parameters": {
-        "hook": "REPLACE_BOOK_APPOINTMENT_WEBHOOK_ID",
+        "hook": 4510533,
         "maxResults": 1
       },
       "mapper": {},
@@ -14,14 +14,20 @@
     },
     {
       "id": 2,
-      "module": "google-calendar:ActionCreateEvent",
-      "version": 1,
+      "module": "google-calendar:createAnEvent",
+      "version": 5,
       "parameters": {
-        "__IMTCONN__": 0,
-        "calendar": "primary"
+        "__IMTCONN__": 14556785
       },
       "mapper": {
-        "summary": "Discovery call - {{if(1.body.message.toolCallList[1].function.arguments.name; 1.body.message.toolCallList[1].function.arguments.name; \"Lead\")}}",
+        "select": "detail",
+        "calendar": "primary",
+        "allDayEvent": false,
+        "conferenceDate": false,
+        "transparency": "opaque",
+        "visibility": "default",
+        "sendUpdates": "none",
+        "summary": "Discovery call - {{1.body.message.toolCallList[1].function.arguments.name}}",
         "description": "Booked automatically by the AI lead qualification agent.",
         "start": "{{1.body.message.toolCallList[1].function.arguments.start_time}}",
         "end": "{{addMinutes(parseDate(1.body.message.toolCallList[1].function.arguments.start_time; \"YYYY-MM-DDTHH:mm:ss.SSSZ\"); 30)}}"
@@ -33,27 +39,31 @@
       "module": "airtable:ActionSearchRecords",
       "version": 1,
       "parameters": {
-        "__IMTCONN__": 0,
+        "__IMTCONN__": 14575071,
         "base": "REPLACE_AIRTABLE_BASE_ID",
         "table": "REPLACE_AIRTABLE_LEADS_TABLE_ID",
-        "maxRecords": 1
+        "formulaField": "formula",
+        "maxRecords": 1,
+        "useColumnId": false
       },
       "mapper": {
-        "filterByFormula": "{Vapi Call ID} = '{{1.body.message.call.id}}'"
+        "formula": "{Vapi Call ID} = '{{1.body.message.call.id}}'"
       },
       "metadata": { "designer": { "x": 600, "y": 0 } }
     },
     {
       "id": 4,
-      "module": "airtable:ActionUpdateRecord",
+      "module": "airtable:ActionUpdateRecords",
       "version": 1,
       "parameters": {
-        "__IMTCONN__": 0,
+        "__IMTCONN__": 14575071,
         "base": "REPLACE_AIRTABLE_BASE_ID",
-        "table": "REPLACE_AIRTABLE_LEADS_TABLE_ID"
+        "table": "REPLACE_AIRTABLE_LEADS_TABLE_ID",
+        "typecast": false,
+        "useColumnId": false
       },
       "mapper": {
-        "recordId": "{{3[1].id}}",
+        "id": "{{3.id}}",
         "Status": "Booked",
         "Appointment Time": "{{1.body.message.toolCallList[1].function.arguments.start_time}}"
       },
@@ -63,13 +73,12 @@
       "id": 5,
       "module": "gateway:WebhookRespond",
       "version": 1,
-      "parameters": {
+      "parameters": {},
+      "mapper": {
         "status": 200,
         "headers": [
-          { "name": "Content-Type", "value": "application/json" }
-        ]
-      },
-      "mapper": {
+          { "key": "Content-Type", "value": "application/json" }
+        ],
         "body": "{\"results\":[{\"toolCallId\":\"{{1.body.message.toolCallList[1].id}}\",\"result\":\"Booked. The discovery call is confirmed for {{1.body.message.toolCallList[1].function.arguments.start_time}}.\"}]}"
       },
       "metadata": { "designer": { "x": 1200, "y": 0 } }

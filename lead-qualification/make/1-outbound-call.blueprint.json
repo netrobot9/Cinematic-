@@ -3,10 +3,10 @@
   "flow": [
     {
       "id": 1,
-      "module": "airtable:TriggerNewRecords",
+      "module": "airtable:TriggerWatchRecords",
       "version": 1,
       "parameters": {
-        "__IMTCONN__": 0,
+        "__IMTCONN__": 14575071,
         "base": "REPLACE_AIRTABLE_BASE_ID",
         "table": "REPLACE_AIRTABLE_LEADS_TABLE_ID",
         "limit": 1
@@ -18,23 +18,14 @@
       "id": 2,
       "module": "http:ActionSendData",
       "version": 3,
-      "parameters": {
-        "handleErrors": false,
-        "useMtls": false,
-        "gzip": true
-      },
+      "parameters": {},
       "mapper": {
         "url": "https://api.vapi.ai/call",
         "method": "post",
         "headers": [
+          { "name": "Authorization", "value": "Bearer REPLACE_VAPI_API_KEY" },
           { "name": "Content-Type", "value": "application/json" }
         ],
-        "authentication": {
-          "type": "bearer",
-          "token": "REPLACE_VAPI_API_KEY"
-        },
-        "bodyType": "raw",
-        "contentType": "application/json",
         "data": "{\"assistantId\":\"REPLACE_VAPI_ASSISTANT_ID\",\"phoneNumberId\":\"REPLACE_VAPI_PHONE_NUMBER_ID\",\"customer\":{\"number\":\"{{1.Phone}}\",\"name\":\"{{1.Name}}\"},\"assistantOverrides\":{\"variableValues\":{\"leadName\":\"{{1.Name}}\",\"company\":\"{{1.Company}}\"}}}",
         "parseResponse": true
       },
@@ -42,16 +33,17 @@
     },
     {
       "id": 3,
-      "module": "airtable:ActionUpdateRecord",
+      "module": "airtable:ActionUpdateRecords",
       "version": 1,
       "parameters": {
-        "__IMTCONN__": 0,
+        "__IMTCONN__": 14575071,
         "base": "REPLACE_AIRTABLE_BASE_ID",
         "table": "REPLACE_AIRTABLE_LEADS_TABLE_ID",
-        "useJsonFieldsInput": false
+        "typecast": false,
+        "useColumnId": false
       },
       "mapper": {
-        "recordId": "{{1.id}}",
+        "id": "{{1.id}}",
         "Status": "Calling",
         "Vapi Call ID": "{{2.data.id}}",
         "Last Called": "{{now}}"
