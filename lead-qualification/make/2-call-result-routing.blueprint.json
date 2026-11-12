@@ -1,0 +1,201 @@
+{
+  "name": "2 - Vapi End-of-Call Routing",
+  "flow": [
+    {
+      "id": 1,
+      "module": "gateway:CustomWebHook",
+      "version": 1,
+      "parameters": {
+        "hook": "REPLACE_VAPI_EVENTS_WEBHOOK_ID",
+        "maxResults": 1
+      },
+      "mapper": {},
+      "metadata": { "designer": { "x": 0, "y": 0 } }
+    },
+    {
+      "id": 2,
+      "module": "builtin:BasicFilter",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "name": "End-of-call report only",
+        "conditions": [
+          [
+            { "a": "{{1.body.message.type}}", "b": "end-of-call-report", "o": "text:equal" }
+          ]
+        ]
+      },
+      "metadata": { "designer": { "x": 300, "y": 0 } }
+    },
+    {
+      "id": 3,
+      "module": "text:MatchPattern",
+      "version": 1,
+      "parameters": {
+        "__IMTCONN__": null
+      },
+      "mapper": {
+        "text": "{{1.body.message.analysis.summary}}",
+        "pattern": "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}",
+        "global": false,
+        "caseSensitive": false
+      },
+      "metadata": { "designer": { "x": 600, "y": 0 } }
+    },
+    {
+      "id": 4,
+      "module": "builtin:BasicSetVariables",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "callId": "{{1.body.message.call.id}}",
+        "outcome": "{{if(1.body.message.analysis.structuredData.outcome; 1.body.message.analysis.structuredData.outcome; \"no_answer\")}}",
+        "status": "{{if(1.body.message.analysis.structuredData.outcome = \"interested\"; \"Interested\"; if(1.body.message.analysis.structuredData.outcome = \"not_interested\"; \"Not Interested\"; if(1.body.message.analysis.structuredData.outcome = \"callback\"; \"Callback\"; \"No Answer\")))}}",
+        "summary": "{{1.body.message.analysis.summary}}",
+        "appointmentTime": "{{1.body.message.analysis.structuredData.appointment_time}}",
+        "extractedEmail": "{{3.match}}"
+      },
+      "metadata": { "designer": { "x": 900, "y": 0 } }
+    },
+    {
+      "id": 5,
+      "module": "airtable:ActionSearchRecords",
+      "version": 1,
+      "parameters": {
+        "__IMTCONN__": 0,
+        "base": "REPLACE_AIRTABLE_BASE_ID",
+        "table": "REPLACE_AIRTABLE_LEADS_TABLE_ID",
+        "maxRecords": 1
+      },
+      "mapper": {
+        "filterByFormula": "{Vapi Call ID} = '{{4.callId}}'"
+      },
+      "metadata": { "designer": { "x": 1200, "y": 0 } }
+    },
+    {
+      "id": 6,
+      "module": "builtin:BasicRouter",
+      "version": 1,
+      "parameters": {},
+      "mapper": null,
+      "metadata": { "designer": { "x": 1500, "y": 0 } },
+      "routes": [
+        {
+          "flow": [
+            {
+              "id": 7,
+              "module": "airtable:ActionUpdateRecord",
+              "version": 1,
+              "parameters": {
+                "__IMTCONN__": 0,
+                "base": "REPLACE_AIRTABLE_BASE_ID",
+                "table": "REPLACE_AIRTABLE_LEADS_TABLE_ID"
+              },
+              "mapper": {
+                "recordId": "{{5.id}}",
+                "Status": "Interested",
+                "Call Summary": "{{4.summary}}"
+              },
+              "metadata": { "designer": { "x": 1800, "y": -200 } }
+            },
+            {
+              "id": 8,
+              "module": "google-email:ActionSendEmail",
+              "version": 1,
+              "parameters": {
+                "__IMTCONN__": 0
+              },
+              "mapper": {
+                "to": "{{if(5[1].Email; 5[1].Email; 4.extractedEmail)}}",
+                "subject": "Next steps from our call",
+                "contentType": "text",
+                "text": "Hi there,\n\nThanks for speaking with us today.\n\n{{if(4.appointmentTime; \"Your discovery call is confirmed for \" & 4.appointmentTime & \".\"; \"Reply to this email and we will find a time that works for you.\")}}\n\nSpeak soon."
+              },
+              "metadata": { "designer": { "x": 2100, "y": -200 } }
+            },
+            {
+              "id": 9,
+              "module": "slack:ActionSendMessageToChannel",
+              "version": 1,
+              "parameters": {
+                "__IMTCONN__": 0,
+                "channel": "REPLACE_SLACK_CHANNEL_ID"
+              },
+              "mapper": {
+                "text": ":white_check_mark: Interested lead: {{if(5[1].Name; 5[1].Name; \"unknown\")}}\nAppointment: {{if(4.appointmentTime; 4.appointmentTime; \"not booked yet\")}}\nSummary: {{4.summary}}"
+              },
+              "metadata": { "designer": { "x": 2400, "y": -200 } }
+            }
+          ],
+          "filter": {
+            "name": "Interested",
+            "conditions": [
+              [ { "a": "{{4.outcome}}", "b": "interested", "o": "text:equal" } ]
+            ]
+          }
+        },
+        {
+          "flow": [
+            {
+              "id": 10,
+              "module": "airtable:ActionUpdateRecord",
+              "version": 1,
+              "parameters": {
+                "__IMTCONN__": 0,
+                "base": "REPLACE_AIRTABLE_BASE_ID",
+                "table": "REPLACE_AIRTABLE_LEADS_TABLE_ID"
+              },
+              "mapper": {
+                "recordId": "{{5.id}}",
+                "Status": "Not Interested",
+                "Call Summary": "{{4.summary}}"
+              },
+              "metadata": { "designer": { "x": 1800, "y": 100 } }
+            }
+          ],
+          "filter": {
+            "name": "Not Interested",
+            "conditions": [
+              [ { "a": "{{4.outcome}}", "b": "not_interested", "o": "text:equal" } ]
+            ]
+          }
+        },
+        {
+          "flow": [
+            {
+              "id": 11,
+              "module": "airtable:ActionUpdateRecord",
+              "version": 1,
+              "parameters": {
+                "__IMTCONN__": 0,
+                "base": "REPLACE_AIRTABLE_BASE_ID",
+                "table": "REPLACE_AIRTABLE_LEADS_TABLE_ID"
+              },
+              "mapper": {
+                "recordId": "{{5.id}}",
+                "Status": "{{4.status}}",
+                "Call Summary": "{{4.summary}}"
+              },
+              "metadata": { "designer": { "x": 1800, "y": 400 } }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "version": 1,
+    "scenario": {
+      "roundtrips": 1,
+      "maxErrors": 3,
+      "autoCommit": true,
+      "autoCommitTriggerLast": true,
+      "sequential": false,
+      "confidential": false,
+      "dataloss": false,
+      "dlq": true,
+      "freshVariables": false
+    },
+    "designer": { "orphans": [] }
+  }
+}
